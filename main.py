@@ -42,7 +42,7 @@ class Car:
         
     def update(self, dt, cars):
         # Check for collision with cars ahead
-        self.handle_collisions(cars)
+        self.handle_collisions(cars, dt)
         
         if self.is_merging and not self.merged:
             if not self.merging_initiated and self.x > 200:
@@ -62,7 +62,7 @@ class Car:
         else:
             self.x += self.speed * dt
             
-    def handle_collisions(self, cars):
+    def handle_collisions(self, cars, dt):
         for car in cars:
             if car != self:
                 # Check if car is ahead of us and in our lane or merging into our lane
