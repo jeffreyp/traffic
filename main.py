@@ -31,12 +31,14 @@ class Car:
         self.x = x
         self.y = y
         self.speed = speed
+        self.original_speed = speed  # Store original speed for statistics
         self.color = color
         self.is_merging = is_merging
         self.merging_initiated = False
         self.merged = False
         self.start_time = time.time()
         self.merge_time = 0
+        self.safe_distance = CAR_WIDTH * 1.5  # Safe distance between cars
         
     def update(self, dt, cars):
         # Check for collision with cars ahead
@@ -62,13 +64,23 @@ class Car:
             
     def handle_collisions(self, cars):
         for car in cars:
-            if car != self and not car.is_merging:
-                # Simple collision detection for cars on the main road
-                if (self.x < car.x + CAR_WIDTH and 
-                    self.x + CAR_WIDTH > car.x and 
-                    self.y < car.y + CAR_HEIGHT and 
-                    self.y + CAR_HEIGHT > car.y):
-                    self.speed = car.speed
+            if car != self:
+                # Check if car is ahead of us and in our lane or merging into our lane
+                ahead_in_lane = (car.x > self.x and 
+                                ((not self.is_merging and not car.is_merging and abs(car.y - self.y) < CAR_HEIGHT/2) or
+                                 (self.is_merging and car.is_merging and abs(car.y - self.y) < CAR_HEIGHT/2) or
+                                 (self.is_merging and not car.is_merging and car.y < self.y) or
+                                 (car.is_merging and car.merging_initiated)))
+                
+                # Advanced collision prevention with safe distance
+                if ahead_in_lane:
+                    distance = car.x - (self.x + CAR_WIDTH)
+                    if distance < self.safe_distance:
+                        # Slow down more based on how close we are
+                        slowdown_factor = max(0.5, min(1.0, distance / self.safe_distance))
+                        target_speed = car.speed * slowdown_factor
+                        # Gradual speed adjustment
+                        self.speed = max(target_speed, self.speed - 30 * dt)
 
     def draw(self, screen):
         pygame.draw.rect(screen, self.color, (self.x, self.y, CAR_WIDTH, CAR_HEIGHT))
@@ -95,6 +107,14 @@ class Simulation:
         self.total_cars = 0
         self.total_merging_cars = 0
         self.successful_merges = 0
+        
+        # Speed tracking
+        self.main_road_speeds = []
+        self.merging_car_speeds = []
+        self.avg_main_road_speed = 0
+        self.avg_merging_speed = 0
+        self.speed_update_timer = 0
+        self.speed_update_interval = 0.5  # Update speeds every 0.5 seconds
         
     def handle_events(self):
         for event in pygame.event.get():
@@ -145,6 +165,33 @@ class Simulation:
                     self.successful_merges += 1
                     self.merge_times.append(car.merge_time)
                 self.cars.remove(car)
+        
+        # Update speed statistics
+        self.speed_update_timer += dt
+        if self.speed_update_timer >= self.speed_update_interval:
+            self.speed_update_timer = 0
+            self.update_speed_stats()
+    
+    def update_speed_stats(self):
+        # Calculate current average speeds
+        main_road_cars = [car for car in self.cars if not car.is_merging]
+        merging_cars = [car for car in self.cars if car.is_merging]
+        
+        if main_road_cars:
+            self.avg_main_road_speed = sum(car.speed for car in main_road_cars) / len(main_road_cars)
+            # Record data for plotting
+            self.main_road_speeds.append(self.avg_main_road_speed)
+            # Keep only the most recent 100 data points
+            if len(self.main_road_speeds) > 100:
+                self.main_road_speeds = self.main_road_speeds[-100:]
+        
+        if merging_cars:
+            self.avg_merging_speed = sum(car.speed for car in merging_cars) / len(merging_cars)
+            # Record data for plotting
+            self.merging_car_speeds.append(self.avg_merging_speed)
+            # Keep only the most recent 100 data points
+            if len(self.merging_car_speeds) > 100:
+                self.merging_car_speeds = self.merging_car_speeds[-100:]
     
     def draw(self):
         self.screen.fill(WHITE)
@@ -168,7 +215,9 @@ class Simulation:
             f"Merging cars per minute: {self.merging_cars_per_minute}",
             f"Main road cars per minute: {self.main_road_cars_per_minute}",
             f"Cars on screen: {len(self.cars)}",
-            f"Successful merges: {self.successful_merges}"
+            f"Successful merges: {self.successful_merges}",
+            f"Avg main road speed: {self.avg_main_road_speed:.1f}",
+            f"Avg merging car speed: {self.avg_merging_speed:.1f}"
         ]
         
         for i, text in enumerate(stats_text):
@@ -207,22 +256,37 @@ class Simulation:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Create plots
-        plt.figure(figsize=(12, 8))
+        plt.figure(figsize=(12, 12))
         
         # Plot 1: Merge times histogram
-        plt.subplot(2, 1, 1)
+        plt.subplot(3, 1, 1)
         plt.hist(self.merge_times, bins=20, alpha=0.7, color='blue')
         plt.title(f'Distribution of Merge Times (Avg: {avg_merge_time:.2f}s)')
         plt.xlabel('Time (seconds)')
         plt.ylabel('Frequency')
         
         # Plot 2: Success rate vs. merging cars rate
-        plt.subplot(2, 1, 2)
+        plt.subplot(3, 1, 2)
         success_rate = (self.successful_merges / self.total_merging_cars) * 100 if self.total_merging_cars > 0 else 0
         plt.bar(['Success Rate'], [success_rate], color='green')
         plt.title(f'Merge Success Rate: {success_rate:.1f}%')
         plt.ylabel('Percentage')
         plt.ylim(0, 100)
+        
+        # Plot 3: Average speeds over time
+        plt.subplot(3, 1, 3)
+        if self.main_road_speeds and self.merging_car_speeds:
+            x = range(len(self.main_road_speeds))
+            plt.plot(x, self.main_road_speeds, 'b-', label='Main road')
+            
+            # Align x-axes if arrays have different lengths
+            x2 = range(len(self.merging_car_speeds))
+            plt.plot(x2, self.merging_car_speeds, 'r-', label='Merging cars')
+            
+            plt.title('Average Speeds Over Time')
+            plt.xlabel('Time steps')
+            plt.ylabel('Speed')
+            plt.legend()
         
         # Add simulation parameters as text
         plt.figtext(0.5, 0.01, 
@@ -230,7 +294,9 @@ class Simulation:
                     f"Merging cars per minute: {self.merging_cars_per_minute}\n"
                     f"Main road cars per minute: {self.main_road_cars_per_minute}\n"
                     f"Total cars: {self.total_cars}\n"
-                    f"Simulation time: {run_time:.1f} seconds", 
+                    f"Simulation time: {run_time:.1f} seconds\n"
+                    f"Final avg main road speed: {self.avg_main_road_speed:.1f}\n"
+                    f"Final avg merging speed: {self.avg_merging_speed:.1f}", 
                     ha="center", fontsize=10, bbox={"facecolor":"orange", "alpha":0.2, "pad":5})
         
         plt.tight_layout(rect=[0, 0.05, 1, 0.95])
