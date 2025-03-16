@@ -38,7 +38,7 @@ class Car:
         self.merged = False
         self.start_time = time.time()
         self.merge_time = 0
-        self.safe_distance = CAR_WIDTH * 1.5  # Safe distance between cars
+        self.safe_distance = CAR_WIDTH * 2.5  # Increased safe distance between cars
         
     def update(self, dt, cars):
         # Check for collision with cars ahead
@@ -72,15 +72,22 @@ class Car:
                                  (self.is_merging and not car.is_merging and car.y < self.y) or
                                  (car.is_merging and car.merging_initiated)))
                 
-                # Advanced collision prevention with safe distance
+                # Check for actual collision (cars touching)
                 if ahead_in_lane:
+                    # Calculate distance between cars
                     distance = car.x - (self.x + CAR_WIDTH)
-                    if distance < self.safe_distance:
-                        # Slow down more based on how close we are
-                        slowdown_factor = max(0.5, min(1.0, distance / self.safe_distance))
+                    
+                    # Emergency stop if cars would touch
+                    if distance <= 1:  # Almost touching
+                        self.speed = 0  # Complete stop to prevent collision
+                    elif distance < self.safe_distance:
+                        # Progressive slowing based on distance
+                        # The closer we get, the more we slow down
+                        slowdown_factor = max(0.1, min(0.9, distance / self.safe_distance))
                         target_speed = car.speed * slowdown_factor
-                        # Gradual speed adjustment
-                        self.speed = max(target_speed, self.speed - 30 * dt)
+                        # More aggressive speed adjustment when close
+                        deceleration = 50 * (1 - distance / self.safe_distance)
+                        self.speed = max(target_speed, self.speed - deceleration * dt)
 
     def draw(self, screen):
         pygame.draw.rect(screen, self.color, (self.x, self.y, CAR_WIDTH, CAR_HEIGHT))
