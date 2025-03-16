@@ -206,9 +206,12 @@ class Simulation:
         # Draw roads
         pygame.draw.rect(self.screen, GRAY, (0, SCREEN_HEIGHT // 2 - ROAD_WIDTH // 2, SCREEN_WIDTH, ROAD_WIDTH))
         
-        # Draw lane markers
-        for i in range(0, SCREEN_WIDTH, 40):
-            pygame.draw.rect(self.screen, WHITE, (i, SCREEN_HEIGHT // 2 - 2, 20, 4))
+        # Draw lane markers - consistent 5px width dashed lines
+        dash_length = 20
+        dash_width = 5
+        dash_spacing = 40
+        for i in range(0, SCREEN_WIDTH, dash_spacing):
+            pygame.draw.rect(self.screen, WHITE, (i, SCREEN_HEIGHT // 2 - dash_width//2, dash_length, dash_width))
         
         # Draw merging lane
         pygame.draw.rect(self.screen, GRAY, (0, SCREEN_HEIGHT // 2, SCREEN_WIDTH // 2, MERGING_LANE_WIDTH))
